@@ -12,8 +12,8 @@ Po wygenerowaniu nowych csvek, możesz usunąć to cały folder zo pobrałeś
 # ================= CONFIGURATION =================
 
 
-SOURCE_DIR = "../data/raw/"
-OUTPUT_DIR = "../data/processed/"
+SOURCE_DIR = "data/raw/"
+OUTPUT_DIR = "data/processed/"
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)

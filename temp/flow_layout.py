@@ -205,6 +205,23 @@ class FlowContainer(QScrollArea):
         # but for initial addition we might want to force it or just updateGeometry
         self.content_widget.updateGeometry() 
 
+    def remove_widget(self, widget):
+        """
+        Removes a widget from the layout, deletes it, 
+        and immediately resizes the container.
+        """
+        # 1. Remove from the Layout's internal list
+        self.flow_layout.removeWidget(widget)
+        
+        # 2. Detach from the UI immediately (visual removal)
+        widget.setParent(None)
+        
+        # 3. Schedule memory cleanup
+        widget.deleteLater()
+        
+        # 4. Force container to recalculate height immediately
+        self.adjust_height()
+
     def set_grid(self, enabled, size=20):
         self.flow_layout.grid_enabled = enabled
         self.flow_layout.grid_size = size

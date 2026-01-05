@@ -1,81 +1,73 @@
 class MainWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("PyQt6 Recipe Search")
-        self.setGeometry(100, 100, 900, 600)
-        self.setObjectName("mainWindow")
+    # ... (init and other methods remain unchanged) ...
+
+    def _ui_scrollable_menu(self) -> QScrollArea:
+        content_widget = QWidget()
+        filter_menu = QVBoxLayout(content_widget)
+
+        # Existing Filters
+        filter_menu.addWidget(self._ui_recipe_name())
+        filter_menu.addWidget(self._ui_liked_box())
+        filter_menu.addWidget(self._ui_disliked_box())
         
-        # Data Loading
-        self.recipe_db = {}
-        self.current_results_ids = []
-        self.current_detail_id = None
+        # New Min/Max Filters
+        # We use a separator line or spacing to distinguish sections if desired
+        filter_menu.addSpacing(10)
         
-        self._load_recipe_db()
+        filter_menu.addWidget(self._ui_min_max_input("Rating (0-5)", "rating"))
+        filter_menu.addWidget(self._ui_min_max_input("Time (Minutes)", "minutes"))
+        filter_menu.addWidget(self._ui_min_max_input("Calories", "cal"))
+        filter_menu.addWidget(self._ui_min_max_input("Protein (g)", "prot"))
+        filter_menu.addWidget(self._ui_min_max_input("Fat (g)", "fat"))
+
+        filter_menu.addStretch()
+
+        scrollable_menu = QScrollArea()
+        scrollable_menu.setWidget(content_widget)
+        scrollable_menu.setWidgetResizable(True)
+        scrollable_menu.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scrollable_menu.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scrollable_menu.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        return scrollable_menu
+
+    def _ui_min_max_input(self, label_text: str, key_prefix: str) -> QWidget:
+        """
+        Creates a vertical box with a label and a row containing [Min] - [Max] inputs.
+        Hooks them up to storage as key_prefix_min and key_prefix_max.
+        """
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 5, 0, 5) # Slight vertical padding
         
-        # Load Trie
-        self.trie_handler = TrieHandler(INGRIDIENTS_TRIE)
-
-        self._ui()
+        # Main Label
+        lbl = QLabel(label_text)
+        layout.addWidget(lbl)
         
-        self._setup_file_watcher()
-        self.reload_results_from_file()
-
-    # ... (Other methods remain unchanged) ...
-
-    def _ui_liked_box(self) -> QWidget:
-        output_widget = QWidget()
-        layout = QVBoxLayout(output_widget)
+        # Horizontal Row for Inputs
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
         
-        label = QLabel("Składniki Lubiane")
+        # Min Input
+        min_edit = QLineEdit()
+        min_edit.setPlaceholderText("Min")
+        storage.add(f"{key_prefix}_min", min_edit)
         
-        # Use AutocompleteLineEdit
-        line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
+        # Separator
+        sep = QLabel("-")
+        sep.setStyleSheet("color: #777; font-weight: bold;")
         
-        flow_area = FlowScrollArea()
-        storage.add("liked_recipes", flow_area)
-
-        self._setup_bubble_input(line_edit, flow_area)
-
-        layout.addWidget(label)
-        layout.addWidget(line_edit)
-        layout.addWidget(flow_area)
-
-        return output_widget
-
-    def _ui_disliked_box(self) -> QWidget:
-        output_widget = QWidget()
-        layout = QVBoxLayout(output_widget)
+        # Max Input
+        max_edit = QLineEdit()
+        max_edit.setPlaceholderText("Max")
+        storage.add(f"{key_prefix}_max", max_edit)
         
-        label = QLabel("Składniki Nielubiane")
+        row_layout.addWidget(min_edit)
+        row_layout.addWidget(sep)
+        row_layout.addWidget(max_edit)
         
-        # Use AutocompleteLineEdit
-        line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
+        layout.addWidget(row_widget)
         
-        flow_area = FlowScrollArea()
-        storage.add("disiked_recipes", flow_area)
+        return container
 
-        self._setup_bubble_input(line_edit, flow_area)
-
-        layout.addWidget(label)
-        layout.addWidget(line_edit)
-        layout.addWidget(flow_area)
-
-        return output_widget
-
-    def _setup_bubble_input(self, line_edit: AutocompleteLineEdit, flow_area: FlowScrollArea):
-        """Connects return signal to validation and bubble creation."""
-        def add_bubble():
-            text = line_edit.text().strip()
-            
-            # 1. Validation Logic
-            # Only add if text is not empty AND exists in Trie
-            if text and self.trie_handler.is_valid_ingredient(text):
-                bubble = BubbleWidget(text, flow_area)
-                flow_area.addWidget(bubble)
-                line_edit.clear()
-                line_edit.popup.hide() # Ensure popup goes away
-            else:
-                # Optional: Visual feedback for invalid input (e.g., flash red)
-                print(f"Invalid ingredient: {text}")
-
-        line_edit.returnPressed.connect(add_bubble)
+    # ... (Rest of the class remains unchanged) ...

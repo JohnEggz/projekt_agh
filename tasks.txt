@@ -1,2 +1,27 @@
+inside from paths import INGRIDIENTS_TRIE i have a trie for all possible ingridients. Trie ends with __ids__ list. Example.
+```json
+"s": {
+  "t": {
+    "e": {
+      "a": {
+        "k": {
+          "__ids__": [
+            84256,
+            58144,
+            72582,
+            17447,
+            2632,
+            165429
+          ],
+          "s": {
+            "__ids__": [
+              32632,
+              217361,
+              352515,
+              43648
+            ]
+          }
+        }
+      }
+```
 
-from src.gui.custom_widgets.floating_list import FloatingList

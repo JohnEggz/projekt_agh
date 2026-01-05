@@ -53,6 +53,60 @@ class ClickableCard(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.recipe_id)
         super().mouseReleaseEvent(event)
+class BubbleWidget(QFrame):
+    """
+    A rounded 'pill' widget with text and a delete button.
+    It automatically removes itself from its parent FlowScrollArea when closed.
+    """
+    def __init__(self, text: str, parent_area: 'FlowScrollArea'):
+        super().__init__()
+        self._text = text
+        self._parent_area = parent_area
+        
+        # Styling
+        self.setObjectName("bubble")
+        self.setStyleSheet("""
+            QFrame#bubble {
+                background-color: #e0e0e0;
+                border-radius: 15px;
+                border: 1px solid #ccc;
+            }
+            QLabel { color: #333; font-weight: 500; }
+            QPushButton {
+                background-color: transparent;
+                color: #555;
+                font-weight: bold;
+                border: none;
+                border-radius: 10px;
+            }
+            QPushButton:hover { background-color: #d0d0d0; color: red; }
+        """)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(5)
+        
+        # Label
+        lbl = QLabel(text)
+        layout.addWidget(lbl)
+        
+        # Remove Button (X)
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(20, 20)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.clicked.connect(self._remove_self)
+        layout.addWidget(btn_close)
+        
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def text(self) -> str:
+        """Exposes the text attribute for the Storage class."""
+        return self._text
+
+    def _remove_self(self):
+        """Removes self from the parent FlowScrollArea."""
+        if self._parent_area:
+            self._parent_area.removeWidget(self)
 
 class FlowLayout(QLayout):
     def __init__(self, parent: Optional[QWidget] = None, margin: int = 0, h_spacing: int = -1, v_spacing: int = -1):
@@ -432,35 +486,55 @@ class MainWindow(QWidget):
     def _ui_liked_box(self) -> QWidget:
         output_widget = QWidget()
         layout = QVBoxLayout(output_widget)
+        
         label = QLabel("Składniki Lubiane")
         line_edit = QLineEdit()
-        flexbox = FlowScrollArea()
-        storage.add("liked_recipes",flexbox)
-        flexbox.addWidget(QPushButton("TEST"))
-        flexbox.addWidget(QPushButton("TEST"))
-        flexbox.addWidget(QPushButton("TEST"))
+        line_edit.setPlaceholderText("Type ingredient and press Enter...")
         
+        flow_area = FlowScrollArea()
+        # Register with storage (assuming 'storage' global exists from your first file)
+        storage.add("liked_recipes", flow_area)
+
+        # Wire up the logic
+        self._setup_bubble_input(line_edit, flow_area)
+
         layout.addWidget(label)
         layout.addWidget(line_edit)
-        layout.addWidget(flexbox)
+        layout.addWidget(flow_area)
 
         return output_widget
 
     def _ui_disliked_box(self) -> QWidget:
         output_widget = QWidget()
         layout = QVBoxLayout(output_widget)
+        
         label = QLabel("Składniki Nielubiane")
         line_edit = QLineEdit()
-        flexbox = FlowScrollArea()
-        storage.add("disiked_recipes",flexbox)
-        flexbox.addWidget(QPushButton("TEST"))
-        flexbox.addWidget(QPushButton("TEST"))
+        line_edit.setPlaceholderText("Type ingredient and press Enter...")
         
+        flow_area = FlowScrollArea()
+        storage.add("disiked_recipes", flow_area)
+
+        # Wire up the logic
+        self._setup_bubble_input(line_edit, flow_area)
+
         layout.addWidget(label)
         layout.addWidget(line_edit)
-        layout.addWidget(flexbox)
+        layout.addWidget(flow_area)
 
         return output_widget
+
+    def _setup_bubble_input(self, line_edit: QLineEdit, flow_area: FlowScrollArea):
+        """Connects a QLineEdit return signal to add a BubbleWidget to the FlowArea."""
+        def add_bubble():
+            text = line_edit.text().strip()
+            if text:
+                # Create bubble, passing the area so it can remove itself later
+                bubble = BubbleWidget(text, flow_area)
+                flow_area.addWidget(bubble)
+                line_edit.clear()
+        
+        line_edit.returnPressed.connect(add_bubble)
 
     def _load_recipe_db(self):
         """Loads CSVs and parses stringified lists using ast.literal_eval."""
@@ -513,8 +587,7 @@ class MainWindow(QWidget):
                 print(f"Error loading SEARCH_CSV: {e}")
 
     def on_search_press(self):
-        # Does nothing as requested
-        pass
+        pprint.pprint(storage.get_data())
 
     def _setup_file_watcher(self):
         # 1. Setup Debounce Timer

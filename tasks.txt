@@ -24,4 +24,4 @@ inside from paths import INGRIDIENTS_TRIE i have a trie for all possible ingridi
         }
       }
 ```
-
+i want to add autosugestions to selected QlineEdits, that when there is more that 1 letter typed, it should show 5 first suggestions in a floating window layer above, under the QLineEdit. You can select one of the options to autocomplete. If ingridient is not on the list, do not create a bubble

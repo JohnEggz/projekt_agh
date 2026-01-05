@@ -19,7 +19,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
     QObject,
-    QEvent,
+    QThread,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,59 +36,9 @@ from PySide6.QtWidgets import (
     QWidget,
     QStackedWidget,
     QFrame,
-    QListWidget,
-    QAbstractItemView,
-)
-from PySide6.QtGui import (
-    QResizeEvent,
 )
 
-from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV, INGRIDIENTS_TRIE
-
-
-class FloatingList(QListWidget):
-    """
-    A custom list widget that floats, auto-scales height,
-    and scrolls if content exceeds MAX_HEIGHT.
-    """
-    MAX_HEIGHT = 200
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setStyleSheet("""
-            QListWidget {
-                background-color: white;
-                border: 1px solid #ccc;
-                font-size: 14px;
-            }
-            QListWidget::item {
-                padding: 5px;
-                color: black;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d7; 
-                color: white;
-            }
-        """)
-        self.hide()
-
-    def update_items(self, items):
-        self.clear()
-        if not items:
-            self.hide()
-            return
-        self.addItems(items)
-        
-        # Calculate dynamic height
-        row_height = 30 # Approx height per item
-        total_content_height = len(items) * row_height + 5
-        final_height = min(total_content_height, self.MAX_HEIGHT)
-        
-        self.setFixedHeight(final_height)
-        self.show()
-        self.raise_() # Crucial: Bring to front of Z-order
+from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV
 
 class ClickableCard(QFrame):
     """A Frame that acts like a button, emitting a signal with its ID when clicked."""
@@ -157,139 +107,6 @@ class BubbleWidget(QFrame):
         """Removes self from the parent FlowScrollArea."""
         if self._parent_area:
             self._parent_area.removeWidget(self)
-class TrieHandler:
-    def __init__(self, filepath):
-        self.root = {}
-        self._load(filepath)
-
-    def _load(self, filepath):
-        if not filepath or not os.path.exists(filepath):
-            print(f"Trie file not found: {filepath}")
-            return
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                self.root = json.load(f)
-        except Exception as e:
-            print(f"Error loading Trie: {e}")
-
-    def get_suggestions(self, prefix: str, limit: int = 5) -> list[str]:
-        """Returns a list of up to `limit` valid words starting with `prefix`."""
-        if not prefix or not self.root:
-            return []
-        
-        prefix = prefix.lower()
-        node = self.root
-        
-        # 1. Traverse to the end of the prefix
-        for char in prefix:
-            if char not in node:
-                return []
-            node = node[char]
-            
-        # 2. DFS to find words
-        results = []
-        
-        def dfs(current_node, current_word):
-            if len(results) >= limit:
-                return
-            
-            # If this node has IDs, it's a valid word
-            if "__ids__" in current_node:
-                results.append(current_word)
-            
-            # Continue deeper
-            for char, next_node in current_node.items():
-                if char == "__ids__": continue
-                dfs(next_node, current_word + char)
-
-        dfs(node, prefix)
-        return results
-
-    def is_valid_ingredient(self, word: str) -> bool:
-        """Checks if a word exists in the Trie and has an ID."""
-        if not word: return False
-        node = self.root
-        for char in word.lower():
-            if char not in node: return False
-            node = node[char]
-        return "__ids__" in node
-class AutocompleteLineEdit(QLineEdit):
-    def __init__(self, trie_handler: TrieHandler, parent=None):
-        super().__init__(parent)
-        self.trie = trie_handler
-        self.setPlaceholderText("Type ingredient...")
-        self.popup = None # Created lazily or attached to window later
-
-        self.textEdited.connect(self._on_text_edited)
-        
-        # Event filter to handle keys (Down/Up/Enter)
-        self.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        if obj == self and self.popup and self.popup.isVisible():
-            if event.type() == QEvent.Type.KeyPress:
-                key = event.key()
-                if key == Qt.Key.Key_Down:
-                    idx = self.popup.currentRow()
-                    if idx < self.popup.count() - 1:
-                        self.popup.setCurrentRow(idx + 1)
-                    elif idx == -1 and self.popup.count() > 0:
-                        self.popup.setCurrentRow(0)
-                    return True
-                elif key == Qt.Key.Key_Up:
-                    idx = self.popup.currentRow()
-                    if idx > 0:
-                        self.popup.setCurrentRow(idx - 1)
-                    return True
-                elif key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return:
-                    if self.popup.currentItem():
-                        self._complete_text(self.popup.currentItem().text())
-                        return True
-        return super().eventFilter(obj, event)
-
-    def _on_text_edited(self, text):
-        # 1. Initialize Popup if needed (Parented to the Window)
-        if not self.popup:
-            self.popup = FloatingList(self.window())
-            self.popup.itemClicked.connect(self._on_item_clicked)
-
-        # 2. Validation & Search
-        if len(text) < 2:
-            self.popup.hide()
-            return
-
-        suggestions = self.trie.get_suggestions(text)
-        if not suggestions:
-            self.popup.hide()
-            return
-
-        # 3. Update Content
-        self.popup.update_items(suggestions)
-        self.popup.setCurrentRow(-1) # Deselect
-
-        # 4. Position Popup
-        # We must map coordinates to the *Window* because popup is child of Window
-        global_pos = self.mapToGlobal(QPoint(0, self.height()))
-        window_pos = self.window().mapFromGlobal(global_pos)
-        
-        self.popup.move(window_pos)
-        self.popup.setFixedWidth(self.width())
-
-    def _on_item_clicked(self, item):
-        self._complete_text(item.text())
-
-    def _complete_text(self, text):
-        self.setText(text)
-        if self.popup:
-            self.popup.hide()
-        self.setFocus()
-    
-    def focusOutEvent(self, event):
-        # Small delay or check logic to allow click events to register
-        # For simplicity, if we click outside, we just hide.
-        if self.popup and not self.popup.hasFocus():
-             self.popup.hide()
-        super().focusOutEvent(event)
 
 class FlowLayout(QLayout):
     def __init__(self, parent: Optional[QWidget] = None, margin: int = 0, h_spacing: int = -1, v_spacing: int = -1):
@@ -535,16 +352,11 @@ class MainWindow(QWidget):
         self.setGeometry(100, 100, 900, 600)
         self.setObjectName("mainWindow")
         
-        # Data Loading
         self.recipe_db = {}
-        self.current_results_ids = [] 
-        self.current_accuracies = {} # <--- NEW: Store accuracy map
-        self.current_detail_id = None
-        
+        self.current_results_ids = [] # To track order for Next/Prev
+        self.current_detail_id = None # ID currently being viewed
+
         self._load_recipe_db()
-        
-        # Load Trie
-        self.trie_handler = TrieHandler(INGRIDIENTS_TRIE)
 
         self._ui()
         
@@ -676,13 +488,14 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(output_widget)
         
         label = QLabel("Składniki Lubiane")
-        
-        # Use AutocompleteLineEdit
-        line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
+        line_edit = QLineEdit()
+        line_edit.setPlaceholderText("Type ingredient and press Enter...")
         
         flow_area = FlowScrollArea()
+        # Register with storage (assuming 'storage' global exists from your first file)
         storage.add("liked_recipes", flow_area)
 
+        # Wire up the logic
         self._setup_bubble_input(line_edit, flow_area)
 
         layout.addWidget(label)
@@ -696,13 +509,13 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(output_widget)
         
         label = QLabel("Składniki Nielubiane")
-        
-        # Use AutocompleteLineEdit
-        line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
+        line_edit = QLineEdit()
+        line_edit.setPlaceholderText("Type ingredient and press Enter...")
         
         flow_area = FlowScrollArea()
         storage.add("disiked_recipes", flow_area)
 
+        # Wire up the logic
         self._setup_bubble_input(line_edit, flow_area)
 
         layout.addWidget(label)
@@ -711,22 +524,16 @@ class MainWindow(QWidget):
 
         return output_widget
 
-    def _setup_bubble_input(self, line_edit: AutocompleteLineEdit, flow_area: FlowScrollArea):
-        """Connects return signal to validation and bubble creation."""
+    def _setup_bubble_input(self, line_edit: QLineEdit, flow_area: FlowScrollArea):
+        """Connects a QLineEdit return signal to add a BubbleWidget to the FlowArea."""
         def add_bubble():
             text = line_edit.text().strip()
-            
-            # 1. Validation Logic
-            # Only add if text is not empty AND exists in Trie
-            if text and self.trie_handler.is_valid_ingredient(text):
+            if text:
+                # Create bubble, passing the area so it can remove itself later
                 bubble = BubbleWidget(text, flow_area)
                 flow_area.addWidget(bubble)
                 line_edit.clear()
-                line_edit.popup.hide() # Ensure popup goes away
-            else:
-                # Optional: Visual feedback for invalid input (e.g., flash red)
-                print(f"Invalid ingredient: {text}")
-
+        
         line_edit.returnPressed.connect(add_bubble)
 
     def _load_recipe_db(self):
@@ -848,20 +655,16 @@ class MainWindow(QWidget):
 
     def populate_results(self, results: list):
         self._clear_right_menu()
-        self.current_results_ids.clear()
-        self.current_accuracies.clear() # <--- NEW: Reset map
+        self.current_results_ids.clear() # Reset ID list
 
         valid_items_count = 0
         for data in results:
             if not isinstance(data, dict): continue
             if "id" not in data or "accuracy" not in data: continue
 
+            # Track ID order
             r_id = data.get("id")
-            accuracy = data.get("accuracy", 0.0)
-            
-            # Store data for later use
             self.current_results_ids.append(r_id)
-            self.current_accuracies[r_id] = accuracy # <--- NEW: Save accuracy
 
             # Create Widget
             widget = self._create_result_widget(data)
@@ -1011,38 +814,43 @@ class MainWindow(QWidget):
         """Fills the detail view with content for the given ID."""
         
         # 1. Clear previous content
+        # Clear Header
         while self.detail_header_container.count():
             item = self.detail_header_container.takeAt(0)
             if item.widget(): item.widget().deleteLater()
             
+        # Clear Details
         while self.detail_content_layout.count():
             item = self.detail_content_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
 
-        # 2. Re-create the Top Card
-        # RETRIEVE SAVED ACCURACY HERE
-        accuracy = self.current_accuracies.get(r_id, 0.0) 
-        data_packet = {"id": r_id, "accuracy": accuracy}
+        # 2. Re-create the Top Card (Non-clickable this time)
+        # We need to find the original data dict (accuracy, etc) for this ID
+        # Since we only stored IDs in list, we can quickly look up accuracy or default it.
+        # Ideally, we should have stored the full result objects, but for now we reconstruct:
+        data_packet = {"id": r_id, "accuracy": 0.0} # Default if not found
+        # (Optional: You could search self.current_results_ids or store data map to get real accuracy)
         
         header_card = self._create_result_widget(data_packet, clickable=False)
         self.detail_header_container.addWidget(header_card)
 
-        # 3. Add Details (Rest remains the same)
+        # 3. Add Details
         db_data = self.recipe_db.get(r_id, {})
         
+        # Helper for titles
         def add_section_title(text):
             lbl = QLabel(text)
             lbl.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; color: #222;")
             self.detail_content_layout.addWidget(lbl)
 
-        # Name
+        # Name (Duplicate)
         add_section_title("Name")
         lbl_name = QLabel(db_data.get('name', ''))
         lbl_name.setStyleSheet("font-size: 16px;")
         lbl_name.setWordWrap(True)
         self.detail_content_layout.addWidget(lbl_name)
 
-        # Description
+        # Description (Duplicate)
         add_section_title("Description")
         lbl_desc = QLabel(db_data.get('description', ''))
         lbl_desc.setWordWrap(True)
@@ -1052,6 +860,7 @@ class MainWindow(QWidget):
         add_section_title("Ingredients")
         ingredients = db_data.get('ingredients', [])
         if ingredients:
+            # Create a bulleted list string
             ing_text = "\n".join([f"• {item}" for item in ingredients])
             lbl_ing = QLabel(ing_text)
             lbl_ing.setWordWrap(True)
@@ -1064,6 +873,7 @@ class MainWindow(QWidget):
         add_section_title("Steps")
         steps = db_data.get('steps', [])
         if steps:
+            # Create a numbered list string
             steps_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)])
             lbl_steps = QLabel(steps_text)
             lbl_steps.setWordWrap(True)

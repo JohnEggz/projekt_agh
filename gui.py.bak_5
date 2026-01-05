@@ -537,8 +537,7 @@ class MainWindow(QWidget):
         
         # Data Loading
         self.recipe_db = {}
-        self.current_results_ids = [] 
-        self.current_accuracies = {} # <--- NEW: Store accuracy map
+        self.current_results_ids = []
         self.current_detail_id = None
         
         self._load_recipe_db()
@@ -848,20 +847,16 @@ class MainWindow(QWidget):
 
     def populate_results(self, results: list):
         self._clear_right_menu()
-        self.current_results_ids.clear()
-        self.current_accuracies.clear() # <--- NEW: Reset map
+        self.current_results_ids.clear() # Reset ID list
 
         valid_items_count = 0
         for data in results:
             if not isinstance(data, dict): continue
             if "id" not in data or "accuracy" not in data: continue
 
+            # Track ID order
             r_id = data.get("id")
-            accuracy = data.get("accuracy", 0.0)
-            
-            # Store data for later use
             self.current_results_ids.append(r_id)
-            self.current_accuracies[r_id] = accuracy # <--- NEW: Save accuracy
 
             # Create Widget
             widget = self._create_result_widget(data)
@@ -1011,38 +1006,43 @@ class MainWindow(QWidget):
         """Fills the detail view with content for the given ID."""
         
         # 1. Clear previous content
+        # Clear Header
         while self.detail_header_container.count():
             item = self.detail_header_container.takeAt(0)
             if item.widget(): item.widget().deleteLater()
             
+        # Clear Details
         while self.detail_content_layout.count():
             item = self.detail_content_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
 
-        # 2. Re-create the Top Card
-        # RETRIEVE SAVED ACCURACY HERE
-        accuracy = self.current_accuracies.get(r_id, 0.0) 
-        data_packet = {"id": r_id, "accuracy": accuracy}
+        # 2. Re-create the Top Card (Non-clickable this time)
+        # We need to find the original data dict (accuracy, etc) for this ID
+        # Since we only stored IDs in list, we can quickly look up accuracy or default it.
+        # Ideally, we should have stored the full result objects, but for now we reconstruct:
+        data_packet = {"id": r_id, "accuracy": 0.0} # Default if not found
+        # (Optional: You could search self.current_results_ids or store data map to get real accuracy)
         
         header_card = self._create_result_widget(data_packet, clickable=False)
         self.detail_header_container.addWidget(header_card)
 
-        # 3. Add Details (Rest remains the same)
+        # 3. Add Details
         db_data = self.recipe_db.get(r_id, {})
         
+        # Helper for titles
         def add_section_title(text):
             lbl = QLabel(text)
             lbl.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; color: #222;")
             self.detail_content_layout.addWidget(lbl)
 
-        # Name
+        # Name (Duplicate)
         add_section_title("Name")
         lbl_name = QLabel(db_data.get('name', ''))
         lbl_name.setStyleSheet("font-size: 16px;")
         lbl_name.setWordWrap(True)
         self.detail_content_layout.addWidget(lbl_name)
 
-        # Description
+        # Description (Duplicate)
         add_section_title("Description")
         lbl_desc = QLabel(db_data.get('description', ''))
         lbl_desc.setWordWrap(True)
@@ -1052,6 +1052,7 @@ class MainWindow(QWidget):
         add_section_title("Ingredients")
         ingredients = db_data.get('ingredients', [])
         if ingredients:
+            # Create a bulleted list string
             ing_text = "\n".join([f"• {item}" for item in ingredients])
             lbl_ing = QLabel(ing_text)
             lbl_ing.setWordWrap(True)
@@ -1064,6 +1065,7 @@ class MainWindow(QWidget):
         add_section_title("Steps")
         steps = db_data.get('steps', [])
         if steps:
+            # Create a numbered list string
             steps_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(steps)])
             lbl_steps = QLabel(steps_text)
             lbl_steps.setWordWrap(True)

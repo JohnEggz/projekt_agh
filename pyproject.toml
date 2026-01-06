@@ -4,12 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "pandas>=2.3.3",
-    "pyside6>=6.10.1",
-    "tqdm>=4.67.1",
-    "watchdog>=6.0.0",
-]
+dependencies = ["pandas>=2.3.3", "pyside6>=6.10.1", "watchdog>=6.0.0"]
 
 [dependency-groups]
 dev = ["pytest>=9.0.1"]

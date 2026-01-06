@@ -2,6 +2,8 @@
 # Ignore all raw and processed data. The README will explain how to generate it.
 data/raw/
 data/processed/
+.cache/*
+!.cache/recipes_found.json
 
 # --- Python ---
 # Virtual environment (uv uses .venv by default)
@@ -32,3 +34,4 @@ dist/
 
 # --- Misc ---
 .DS_Store
+

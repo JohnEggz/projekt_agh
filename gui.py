@@ -2,10 +2,11 @@ import sys
 import pprint
 import json
 import os
-import time
 import csv
 import ast
 from typing import List, Optional
+import pandas as pd
+import orjson
 
 
 from watchdog.observers import Observer
@@ -41,6 +42,123 @@ from PySide6.QtWidgets import (
 
 from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV, INGRIDIENTS_TRIE
 
+def _convert_sets_to_lists(obj):
+    if isinstance(obj, dict):
+        return {k: _convert_sets_to_lists(v) for k, v in obj.items()}
+    if isinstance(obj, set):
+        return sorted(list(obj))
+    return obj
+
+def _create_trie_from_csv(
+    source_csv: str,
+    output_json: str,
+    id_col: str,
+    data_col: str,
+    separator: str,
+):
+    print("Reading CSV and preprocessing data...")
+    df = pd.read_csv(source_csv, usecols=[id_col, data_col]).dropna()
+
+    doc_ids = df[id_col].tolist()
+    items_data = df[data_col].str.lower().tolist()
+    del df
+
+    print("Building Trie...")
+    trie_root = {}
+    for doc_id, item_str in zip(doc_ids, items_data):
+        items = [x.strip() for x in item_str.split(separator) if x.strip()]
+        for word in items:
+            node = trie_root
+            for char in word:
+                node = node.setdefault(char, {})
+            node.setdefault("__ids__", set()).add(doc_id)
+
+    print("Converting sets to lists for serialization...")
+    trie_root = _convert_sets_to_lists(trie_root)
+
+    print(f"Writing Trie to {output_json}...")
+    os.makedirs(os.path.dirname(os.path.abspath(output_json)), exist_ok=True)
+    if orjson:
+        with open(output_json, 'wb') as f:
+            f.write(orjson.dumps(trie_root))
+    else:
+        with open(output_json, 'w', encoding='utf-8') as f:
+            json.dump(trie_root, f, separators=(',', ':'))
+    print("Trie generation complete.")
+    return trie_root
+
+class TrieHandler:
+    def __init__(
+        self,
+        filepath: str,
+        source_csv: str = None,
+        id_col: str = None,
+        data_col: str = None,
+        separator: str = ';',
+    ):
+        self.filepath = filepath
+        self.root = {}
+        self._load_or_generate(source_csv, id_col, data_col, separator)
+
+    def _load_or_generate(
+        self, source_csv: str, id_col: str, data_col: str, separator: str
+    ):
+        if os.path.exists(self.filepath):
+            print(f"Loading Trie from {self.filepath}...")
+            try:
+                if orjson:
+                    with open(self.filepath, "rb") as f:
+                        self.root = orjson.loads(f.read())
+                else:
+                    with open(self.filepath, "r", encoding="utf-8") as f:
+                        self.root = json.load(f)
+            except Exception as e:
+                print(f"Error loading Trie: {e}. Trie will be empty.")
+                self.root = {}
+            return
+        if source_csv and id_col and data_col:
+            print(f"Trie file not found: {self.filepath}. Generating...")
+            self.root = _create_trie_from_csv(
+                source_csv=source_csv,
+                output_json=self.filepath,
+                id_col=id_col,
+                data_col=data_col,
+                separator=separator,
+            )
+        else:
+            print(f"Trie file not found: {self.filepath}. "
+                  "Generation arguments not provided. Trie will be empty.")
+
+    def get_suggestions(self, prefix: str, limit: int = 5) -> list[str]:
+        if not prefix or not self.root:
+            return []
+
+        prefix = prefix.lower()
+        node = self.root
+        for char in prefix:
+            if char not in node:
+                return []
+            node = node[char]
+        results = []
+        stack = [(node, prefix)]
+        while stack and len(results) < limit:
+            current_node, current_word = stack.pop()
+            if "__ids__" in current_node:
+                results.append(current_word)
+            for char, next_node in reversed(list(current_node.items())):
+                if char != "__ids__":
+                    stack.append((next_node, current_word + char))
+        return results
+
+    def is_valid_ingredient(self, word: str) -> bool:
+        if not word or not self.root:
+            return False
+        node = self.root
+        for char in word.lower():
+            if char not in node:
+                return False
+            node = node[char]
+        return "__ids__" in node
 
 class FloatingList(QListWidget):
     """
@@ -88,7 +206,6 @@ class FloatingList(QListWidget):
         self.show()
         self.raise_()
 
-
 class ClickableCard(QFrame):
     clicked = Signal(int)
 
@@ -101,7 +218,6 @@ class ClickableCard(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.recipe_id)
         super().mouseReleaseEvent(event)
-
 
 class BubbleWidget(QFrame):
     def __init__(self, text: str, parent_area: "FlowScrollArea"):
@@ -147,58 +263,6 @@ class BubbleWidget(QFrame):
     def _remove_self(self):
         if self._parent_area:
             self._parent_area.removeWidget(self)
-
-
-class TrieHandler:
-    def __init__(self, filepath):
-        self.root = {}
-        self._load(filepath)
-
-    def _load(self, filepath):
-        if not filepath or not os.path.exists(filepath):
-            print(f"Trie file not found: {filepath}")
-            return
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                self.root = json.load(f)
-        except Exception as e:
-            print(f"Error loading Trie: {e}")
-
-    def get_suggestions(self, prefix: str, limit: int = 5) -> list[str]:
-        if not prefix or not self.root:
-            return []
-
-        prefix = prefix.lower()
-        node = self.root
-        for char in prefix:
-            if char not in node:
-                return []
-            node = node[char]
-        results = []
-
-        def dfs(current_node, current_word):
-            if len(results) >= limit:
-                return
-            if "__ids__" in current_node:
-                results.append(current_word)
-            for char, next_node in current_node.items():
-                if char == "__ids__":
-                    continue
-                dfs(next_node, current_word + char)
-
-        dfs(node, prefix)
-        return results
-
-    def is_valid_ingredient(self, word: str) -> bool:
-        if not word:
-            return False
-        node = self.root
-        for char in word.lower():
-            if char not in node:
-                return False
-            node = node[char]
-        return "__ids__" in node
-
 
 class AutocompleteLineEdit(QLineEdit):
     def __init__(self, trie_handler: TrieHandler, parent=None):
@@ -265,7 +329,6 @@ class AutocompleteLineEdit(QLineEdit):
         if self.popup and not self.popup.hasFocus():
             self.popup.hide()
         super().focusOutEvent(event)
-
 
 class FlowLayout(QLayout):
     def __init__(
@@ -383,7 +446,6 @@ class FlowLayout(QLayout):
             line_height = max(line_height, item.sizeHint().height())
         return y + line_height - rect.y() + top + bottom
 
-
 class FlowScrollArea(QScrollArea):
     def __init__(
         self, height: Optional[int] = 50, parent: Optional[QWidget] = None
@@ -430,7 +492,6 @@ class FlowScrollArea(QScrollArea):
         inner_size = self._container.sizeHint()
         height = inner_size.height() + self.frameWidth() * 2
         return QSize(super().sizeHint().width(), height)
-
 
 class Storage:
     def __init__(self) -> None:
@@ -483,9 +544,7 @@ class Storage:
     def get_data(self) -> dict[str, str | list[str]]:
         return self._objects_to_dict()
 
-
 storage = Storage()
-
 
 class RecipeFileHandler(QObject, FileSystemEventHandler):
     file_changed = Signal()
@@ -518,7 +577,6 @@ class RecipeFileHandler(QObject, FileSystemEventHandler):
     def on_moved(self, event):
         self._process_event(event)
 
-
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -531,7 +589,13 @@ class MainWindow(QWidget):
         self.current_detail_id = None
 
         self._load_recipe_db()
-        self.trie_handler = TrieHandler(INGRIDIENTS_TRIE)
+        self.trie_handler = TrieHandler(
+            INGRIDIENTS_TRIE,
+            SEARCH_CSV,
+            "id",
+            "ingredients_serialized",
+            ";"
+        )
 
         self._ui()
         self._apply_stylesheet()
@@ -1173,13 +1237,11 @@ class MainWindow(QWidget):
 
         self.detail_content_layout.addStretch()
 
-
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()

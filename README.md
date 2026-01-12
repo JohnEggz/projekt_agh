@@ -87,20 +87,28 @@ The input should be a JSON array of objects, structured similarly to the `Data S
 
 #### Example:  
 ```json
-
-[
-  {
-    "name": "chicken soup",
-    "minutes_max": 60,
-    "ingredients_liked": [
-      "beef roast",
-      "brown gravy mix"
-    ],
-    "ingredients_disliked": [
-      "milk"
-    ]
-  }
-]
+{
+  "cal_max": "400",
+  "cal_min": "100",
+  "ingredients_disliked": [
+    "celery",
+    "rosemary",
+    "onion"
+  ],
+  "fat_max": "100",
+  "fat_min": "15",
+  "ingredients_liked": [
+    "chicken",
+    "carrot"
+  ],
+  "minutes_max": "120",
+  "minutes_min": "30",
+  "prot_max": "60",
+  "prot_min": "20",
+  "rating_max": "5",
+  "rating_min": "4",
+  "recipe_name": "rosol"
+}
 ```
 
 

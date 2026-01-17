@@ -79,7 +79,7 @@ make test
 - tags_serialized: str [list separated by `;`]
 
 ### Input: (Everything is optional)
-The input should be a JSON array of objects, structured similarly to the `Data Structure` above. Example fields you might include:
+The input should be a JSON dict, structured similarly to the `Data Structure` above. Example fields you might include:
 - `name`: str
 - `minutes_max`: int
 - `tags`: list[str]
@@ -113,7 +113,7 @@ The input should be a JSON array of objects, structured similarly to the `Data S
 
 
 ### Output:
-The output will be a JSON array of objects, each containing an `id` and its calculated `accuracy`.
+The output will be a JSON array of dicts, each containing an `id` and its calculated `accuracy`.
 
 #### Example:  
 

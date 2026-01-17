@@ -3,13 +3,22 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAX_LINE 4096
+#define MAX_LINE 16384
 #define MAX_INGREDIENTS 100
 #define MAX_NAME 256
 
 typedef struct {
-    char name[MAX_NAME];
+    char recipe_name[MAX_NAME];
+    float cal_max;
+    float cal_min;
+    float fat_max;
+    float fat_min;
+    float prot_max;
+    float prot_min;
     int minutes_max;
+    int minutes_min;
+    float rating_max;
+    float rating_min;
     char **ingredients_liked;
     int liked_count;
     char **ingredients_disliked;
@@ -32,7 +41,6 @@ typedef struct {
     float accuracy;
 } Recipe;
 
-// Usuwa białe znaki
 void trim(char *str) {
     char *end;
     while(isspace((unsigned char)*str)) str++;
@@ -43,7 +51,6 @@ void trim(char *str) {
     memmove(str - (str - str), str, strlen(str) + 1);
 }
 
-// Dzieli tekst na części według separatora delim
 char **split_string(char *str, const char *delim, int *count) {
     char **result = malloc(MAX_INGREDIENTS * sizeof(char*));
     *count = 0;
@@ -57,7 +64,6 @@ char **split_string(char *str, const char *delim, int *count) {
     return result;
 }
 
-// Zwalnia dynamicznie zaalokowaną pamięć
 void free_string_array(char **arr, int count) {
     for(int i = 0; i < count; i++) {
         free(arr[i]);
@@ -65,7 +71,6 @@ void free_string_array(char **arr, int count) {
     free(arr);
 }
 
-// Sprawdza czy w tablicy składników jest dany składnik
 int contains_ingredient(char **ingredients, int count, const char *search) {
     for(int i = 0; i < count; i++) {
         if(strcasestr(ingredients[i], search) != NULL) {
@@ -75,14 +80,37 @@ int contains_ingredient(char **ingredients, int count, const char *search) {
     return 0;
 }
 
-// Oblicza Final Score (0,0 - 1.0)
 float calculate_accuracy(Recipe *recipe, Preferences *prefs) {
     float score = 0.0;
     int total_criteria = 0;
     
-    // Sprawdź czas przygotowania
+    // Sprawdź czas przygotowania (min i max)
     total_criteria++;
-    if(recipe->minutes <= prefs->minutes_max) {
+    if(recipe->minutes >= prefs->minutes_min && recipe->minutes <= prefs->minutes_max) {
+        score += 1.0;
+    }
+    
+    // Sprawdź kalorie (min i max)
+    total_criteria++;
+    if(recipe->cal >= prefs->cal_min && recipe->cal <= prefs->cal_max) {
+        score += 1.0;
+    }
+    
+    // Sprawdź tłuszcz (min i max)
+    total_criteria++;
+    if(recipe->fat >= prefs->fat_min && recipe->fat <= prefs->fat_max) {
+        score += 1.0;
+    }
+    
+    // Sprawdź białko (min i max)
+    total_criteria++;
+    if(recipe->prot >= prefs->prot_min && recipe->prot <= prefs->prot_max) {
+        score += 1.0;
+    }
+    
+    // Sprawdź ocenę (min i max)
+    total_criteria++;
+    if(recipe->avg_rating >= prefs->rating_min && recipe->avg_rating <= prefs->rating_max) {
         score += 1.0;
     }
     
@@ -111,11 +139,11 @@ float calculate_accuracy(Recipe *recipe, Preferences *prefs) {
     return total_criteria > 0 ? score / total_criteria : 0.0;
 }
 
-// Wczytuje plik JSON z preferencjami użytkownika
 void parse_preferences(const char *filename, Preferences *prefs) {
     FILE *f = fopen(filename, "r");
     if(!f) {
-        fprintf(stderr, "Nie można otworzyć pliku preferencji\n");
+        fprintf(stderr, "Nie można otworzyć pliku preferencji: %s\n", filename);
+        perror("Szczegóły błędu");
         exit(1);
     }
     
@@ -125,11 +153,75 @@ void parse_preferences(const char *filename, Preferences *prefs) {
     prefs->ingredients_liked = malloc(MAX_INGREDIENTS * sizeof(char*));
     prefs->ingredients_disliked = malloc(MAX_INGREDIENTS * sizeof(char*));
     
+    // Ustaw domyślne wartości
+    prefs->cal_min = 0;
+    prefs->cal_max = 10000;
+    prefs->fat_min = 0;
+    prefs->fat_max = 10000;
+    prefs->prot_min = 0;
+    prefs->prot_max = 10000;
+    prefs->minutes_min = 0;
+    prefs->minutes_max = 10000;
+    prefs->rating_min = 0;
+    prefs->rating_max = 5;
+    
     int in_liked = 0, in_disliked = 0;
     
     while(fgets(line, sizeof(line), f)) {
-        if(strstr(line, "\"minutes_max\"")) {
-            sscanf(line, " \"minutes_max\": %d", &prefs->minutes_max);
+        // Parsuj wartości liczbowe
+        if(strstr(line, "\"cal_max\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->cal_max = atof(colon + 1);
+        }
+        else if(strstr(line, "\"cal_min\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->cal_min = atof(colon + 1);
+        }
+        else if(strstr(line, "\"fat_max\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->fat_max = atof(colon + 1);
+        }
+        else if(strstr(line, "\"fat_min\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->fat_min = atof(colon + 1);
+        }
+        else if(strstr(line, "\"prot_max\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->prot_max = atof(colon + 1);
+        }
+        else if(strstr(line, "\"prot_min\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->prot_min = atof(colon + 1);
+        }
+        else if(strstr(line, "\"minutes_max\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->minutes_max = atoi(colon + 1);
+        }
+        else if(strstr(line, "\"minutes_min\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->minutes_min = atoi(colon + 1);
+        }
+        else if(strstr(line, "\"rating_max\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->rating_max = atof(colon + 1);
+        }
+        else if(strstr(line, "\"rating_min\"")) {
+            char *colon = strchr(line, ':');
+            if(colon) prefs->rating_min = atof(colon + 1);
+        }
+        else if(strstr(line, "\"recipe_name\"")) {
+            char *start = strchr(line, ':');
+            if(start) {
+                start = strchr(start, '"');
+                if(start) {
+                    start++;
+                    char *end = strchr(start, '"');
+                    if(end) {
+                        *end = '\0';
+                        strncpy(prefs->recipe_name, start, MAX_NAME-1);
+                    }
+                }
+            }
         }
         else if(strstr(line, "\"ingredients_liked\"")) {
             in_liked = 1;
@@ -138,6 +230,10 @@ void parse_preferences(const char *filename, Preferences *prefs) {
         else if(strstr(line, "\"ingredients_disliked\"")) {
             in_disliked = 1;
             in_liked = 0;
+        }
+        else if(strstr(line, "]")) {
+            in_liked = 0;
+            in_disliked = 0;
         }
         else if(in_liked && strstr(line, "\"")) {
             char *start = strchr(line, '"');
@@ -164,9 +260,17 @@ void parse_preferences(const char *filename, Preferences *prefs) {
     }
     
     fclose(f);
+    
+    printf("✓ Wczytano preferencje:\n");
+    printf("  Kalorie: %.0f - %.0f\n", prefs->cal_min, prefs->cal_max);
+    printf("  Tłuszcz: %.0f - %.0f\n", prefs->fat_min, prefs->fat_max);
+    printf("  Białko: %.0f - %.0f\n", prefs->prot_min, prefs->prot_max);
+    printf("  Czas: %d - %d min\n", prefs->minutes_min, prefs->minutes_max);
+    printf("  Ocena: %.1f - %.1f\n", prefs->rating_min, prefs->rating_max);
+    printf("  Lubiane składniki: %d\n", prefs->liked_count);
+    printf("  Nielubiane składniki: %d\n", prefs->disliked_count);
 }
 
-// Funkcja porównująca dla qsort()
 int compare_recipes(const void *a, const void *b) {
     Recipe *r1 = (Recipe*)a;
     Recipe *r2 = (Recipe*)b;
@@ -187,9 +291,10 @@ int main(int argc, char *argv[]) {
     FILE *csv = fopen(argv[2], "r");
     if(!csv) {
         fprintf(stderr, "Nie można otworzyć pliku CSV: %s\n", argv[2]);
-	perror("Szczegóły błędu");
+        perror("Szczegóły błędu");
         return 1;
     }
+    printf("✓ Pomyślnie otwarto plik CSV: %s\n", argv[2]);
     
     int recipe_capacity = 1000;
     Recipe *recipes = malloc(recipe_capacity * sizeof(Recipe));

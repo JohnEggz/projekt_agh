@@ -7,6 +7,7 @@ import ast
 from typing import List, Optional
 import pandas as pd
 import orjson
+import subprocess
 
 
 from watchdog.observers import Observer
@@ -40,7 +41,7 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV, INGRIDIENTS_TRIE
+from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV, INGRIDIENTS_TRIE, USER_OUTPUT
 
 def _convert_sets_to_lists(obj):
     if isinstance(obj, dict):
@@ -863,7 +864,7 @@ class MainWindow(QWidget):
         line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
 
         flow_area = FlowScrollArea()
-        storage.add("liked_recipes", flow_area)
+        storage.add("ingredients_liked", flow_area)
 
         self._setup_bubble_input(line_edit, flow_area)
 
@@ -883,7 +884,7 @@ class MainWindow(QWidget):
         line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
 
         flow_area = FlowScrollArea()
-        storage.add("disiked_recipes", flow_area)
+        storage.add("ingredients_disliked", flow_area)
 
         self._setup_bubble_input(line_edit, flow_area)
 
@@ -955,9 +956,13 @@ class MainWindow(QWidget):
                             r_id = int(row["id"])
                             if r_id not in self.recipe_db:
                                 self.recipe_db[r_id] = {}
-                            self.recipe_db[r_id]["rating"] = row.get(
-                                "avg_rating", "-"
-                            )
+
+                            raw_rating = row.get("avg_rating", "-")
+                            try:
+                                self.recipe_db[r_id]["rating"] = f"{float(raw_rating):.2f}"
+                            except (ValueError, TypeError):
+                                self.recipe_db[r_id]["rating"] = "-"
+
                             self.recipe_db[r_id]["minutes"] = row.get(
                                 "minutes", "-"
                             )
@@ -970,7 +975,17 @@ class MainWindow(QWidget):
                 print(f"Error loading SEARCH_CSV: {e}")
 
     def on_search_press(self):
-        pprint.pprint(storage.get_data())
+        result_data = storage.get_data()
+        pprint.pprint(result_data)
+        json_str = json.dumps(result_data, indent=4)
+
+        with open(USER_OUTPUT, "w") as f:
+            f.write(json_str)
+
+        try:
+            subprocess.run(["./recipe_matcher", USER_OUTPUT, SEARCH_CSV, RECIPES_FOUND])
+        except Exception as e:
+            print(e)
 
     def _setup_file_watcher(self):
         self.debounce_timer = QTimer()

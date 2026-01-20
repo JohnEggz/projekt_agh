@@ -1,6 +1,9 @@
 RAW_DIR = data/raw
 PROCESSED_DIR = data/processed
 
+C_FILE_OUT = recipe_matcher
+C_FILE = scripts/recipe_matcher.c
+
 RAW_DATA_SENTINEL = $(RAW_DIR)/.download_complete
 PROCESSED_DATA_SENTINEL = $(PROCESSED_DIR)/.processed_complete
 
@@ -28,6 +31,9 @@ $(PROCESSED_DATA_SENTINEL): $(RAW_DATA_SENTINEL) scripts/process_data.py
 	uv run python scripts/process_data.py
 	@touch "$(PROCESSED_DATA_SENTINEL)"
 
+build: $(C_FILE)
+	gcc -Wall -Wextra -O2 scripts/recipe_matcher.c -o $(C_FILE_OUT)
+
 run:
 	@echo ">>> Running the application..."
 	uv run python -m src
@@ -41,3 +47,4 @@ clean:
 	@rm -rf .venv __pycache__ */__pycache__ tests/__pycache__
 	@rm -rf "$(RAW_DIR)" "$(PROCESSED_DIR)"
 	@echo ">>> Cleanup complete."
+

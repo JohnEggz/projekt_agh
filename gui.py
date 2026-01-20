@@ -41,7 +41,14 @@ from PySide6.QtWidgets import (
     QListWidget,
 )
 
-from paths import RECIPES_FOUND, DISPLAY_CSV, SEARCH_CSV, INGRIDIENTS_TRIE, USER_OUTPUT
+from paths import (
+    RECIPES_FOUND,
+    DISPLAY_CSV,
+    SEARCH_CSV,
+    INGRIDIENTS_TRIE,
+    USER_OUTPUT,
+    WEIGHTS
+)
 
 def _convert_sets_to_lists(obj):
     if isinstance(obj, dict):
@@ -863,7 +870,7 @@ class MainWindow(QWidget):
         label = QLabel("Składniki Lubiane")
         line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
 
-        flow_area = FlowScrollArea()
+        flow_area = FlowScrollArea(height=80)
         storage.add("ingredients_liked", flow_area)
 
         self._setup_bubble_input(line_edit, flow_area)
@@ -883,7 +890,7 @@ class MainWindow(QWidget):
         label = QLabel("Składniki Nielubiane")
         line_edit = AutocompleteLineEdit(self.trie_handler, output_widget)
 
-        flow_area = FlowScrollArea()
+        flow_area = FlowScrollArea(height=80)
         storage.add("ingredients_disliked", flow_area)
 
         self._setup_bubble_input(line_edit, flow_area)
@@ -983,7 +990,7 @@ class MainWindow(QWidget):
             f.write(json_str)
 
         try:
-            subprocess.run(["./recipe_matcher", USER_OUTPUT, SEARCH_CSV, RECIPES_FOUND])
+            subprocess.run(["./recipe_matcher", USER_OUTPUT, SEARCH_CSV, RECIPES_FOUND, WEIGHTS])
         except Exception as e:
             print(e)
 
